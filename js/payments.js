@@ -210,7 +210,7 @@
         return snap.docs.map(function (d) { return d.data(); });
     }
 
-    function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature); }
+        function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature) + (SOL.explorerSuffix || ""); }
 
     window.VYROPayments = {
         setPendingPayment, getPendingPayment, clearPendingPayment,
