@@ -70,8 +70,21 @@
         // The Firestore rules require email_verified in the ID token, so refresh it now.
         try { await current.getIdToken(true); } catch (e) { console.warn("VYRO token refresh failed:", e); }
 
-        const data = await loadProfile(current.uid);
-        if (window.VYROWallet) { VYROWallet.setUser(current.uid); VYROWallet.setUsername(data.username || null); }
+                const data = await loadProfile(current.uid);
+
+        // One-time repair: accounts created before the username directory existed
+        // have no usernames/{username} entry, so nobody could send to them.
+        if (data.username) {
+            try {
+                const ref = firebaseDB.collection("usernames").doc(data.username);
+                const snap = await ref.get();
+                if (!snap.exists) {
+                    await ref.set({ uid: current.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                }
+            } catch (e) { console.warn("VYRO username directory repair failed:", e); }
+        }
+
+        if (window.VYROWallet) { VYROWallet.setUser(current.uid); await VYROWallet.setUsername(data.username || null); }
         if (data.securitySetupComplete !== true) {
             go("two-factor-screen");
             return;
