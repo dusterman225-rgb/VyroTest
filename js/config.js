@@ -11,21 +11,18 @@ window.VYRO_CONFIG = Object.freeze({
     network: "solana",
     asset: "USDC",
 
-    solana: Object.freeze({
-        // CAIP-2 chain id for Solana mainnet (used by WalletConnect).
-        chainId: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        solana: Object.freeze({
+        // DEVNET (testing only). Switch back to mainnet values before launch.
+        chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 
-        // The public Solana RPC is rate-limited and not meant for production.
-        // Replace with a dedicated endpoint (Helius, QuickNode, Triton, ...).
-        // An API key in a browser-side URL is visible to users; restrict it by
-        // allowed domain/origin in the provider dashboard.
-        rpcUrl: "https://solana-mainnet.g.alchemy.com/v2/alch_X9mveVmXQneC5MXDJXAEi",
+        rpcUrl: "https://api.devnet.solana.com",
 
-        // Circle's native USDC on Solana mainnet.
-        usdcMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        // Circle's devnet USDC mint (the token shown as 4zMM...ncDU in Solflare).
+        usdcMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
         usdcDecimals: 6,
 
-        explorerTxUrl: "https://solscan.io/tx/"
+        explorerTxUrl: "https://solscan.io/tx/",
+        explorerSuffix: "?cluster=devnet"
     }),
 
     // Safety limits enforced client-side (UX guard-rails, not security controls).
