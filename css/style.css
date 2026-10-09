@@ -2140,3 +2140,87 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
     line-height: 1.5;
     word-break: break-all;
 }
+
+/* =========================================================
+   GLOBAL PROFILE AVATAR (every screen after login)
+   ========================================================= */
+
+.global-profile-menu {
+    position: fixed;
+    top: 30px;
+    right: var(--page-padding);
+    z-index: 600;
+    display: none;
+}
+
+.global-profile-menu.visible {
+    display: block;
+}
+
+/* =========================================================
+   MINIMUM NOTE, RECIPIENT VERIFICATION WORD
+   ========================================================= */
+
+.min-note {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--gold);
+    opacity: 0.9;
+}
+
+.recipient-word {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.recipient-word span {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    opacity: 0.7;
+}
+
+.recipient-word strong {
+    font-size: 18px;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+}
+
+.recipient-word-hint {
+    display: block;
+    margin-top: 6px;
+    opacity: 0.7;
+}
+
+.confirm-word {
+    display: block;
+    margin: 6px 0 10px;
+    font-size: 22px;
+    letter-spacing: 0.06em;
+    color: var(--gold);
+}
+
+.verification-box {
+    margin: 16px 0 20px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(245, 201, 91, 0.04);
+}
+
+.verification-box .verification-title {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--gold);
+}
+
+.verification-box p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.8;
+}
