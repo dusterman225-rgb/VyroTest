@@ -146,16 +146,22 @@
                 }
             }
 
+            // One shared receipt per payment. The sender writes it; both the sender and the
+            // recipient can read it (see firestore.rules). The blockchain stays the source of truth.
+            const me = firebaseAuth.currentUser;
             const record = {
-                recipient: "@" + to.username,
+                id: signature,
+                fromUid: me.uid,
+                fromUsername: (VYROWallet.getUsername && VYROWallet.getUsername()) || "",
+                toUid: to.uid,
+                toUsername: to.username,
+                fromWallet: sender,
                 recipientAddress: to.address,
                 amount: VYROTransfer.formatUnits(pv.units, SOL.usdcDecimals),
                 asset: "USDC",
                 network: "Solana",
-                fromWallet: sender,
                 status: "Submitted",
-                type: "Send",
-                id: signature
+                type: "Send"
             };
             saveRecord(record);
 
@@ -164,7 +170,7 @@
             if (final !== "Submitted") updateRecordStatus(signature, final);
 
             clearPendingPayment();
-            return Object.assign({}, record, { status: final });
+            return Object.assign({}, record, { recipient: "@" + to.username, status: final });
         } finally {
             inFlight = false;
         }
@@ -189,33 +195,123 @@
         return "Submitted"; // still pending; the history screen links to the explorer
     }
 
-    // ---------- history (sender-side, stored under the user's own private path) ----------
-    function txCollection() {
-        const me = firebaseAuth.currentUser;
-        if (!me) throw new Error("Not signed in.");
-        return firebaseDB.collection("users").doc(me.uid).collection("transactions");
-    }
+    // ---------- history (sent AND received) ----------
+    // Each payment is one document in `payments/{signature}`. The sender writes it after
+    // signing; the sender and the recipient can both read it. Nobody else can.
+    function paymentsCol() { return firebaseDB.collection("payments"); }
+
     function saveRecord(record) {
         try {
-            txCollection().doc(record.id).set(Object.assign({}, record, { createdAt: firebase.firestore.FieldValue.serverTimestamp() }))
+            paymentsCol().doc(record.id).set(Object.assign({}, record, { createdAt: firebase.firestore.FieldValue.serverTimestamp() }))
                 .catch(function (e) { console.warn("VYRO: could not save history", e); });
         } catch (e) { console.warn("VYRO: could not save history", e); }
     }
     function updateRecordStatus(signature, status) {
-        try { txCollection().doc(signature).update({ status: status }).catch(function (e) { console.warn("VYRO: status update failed", e); }); }
+        try { paymentsCol().doc(signature).update({ status: status }).catch(function (e) { console.warn("VYRO: status update failed", e); }); }
         catch (e) { /* history is best-effort; the chain is the source of truth */ }
     }
-    async function loadHistory() {
-        const snap = await txCollection().orderBy("createdAt", "desc").limit(50).get();
-        return snap.docs.map(function (d) { return d.data(); });
+
+    function millis(t) { return t && typeof t.toMillis === "function" ? t.toMillis() : Date.now(); }
+
+    // Turns a stored receipt into what the screens need, from THIS user's point of view.
+    function decorate(d, myUid) {
+        const sent = d.fromUid === myUid;
+        return Object.assign({}, d, {
+            direction: sent ? "sent" : "received",
+            type: sent ? "Sent" : "Received",
+            counterparty: "@" + ((sent ? d.toUsername : d.fromUsername) || "unknown"),
+            recipient: "@" + (d.toUsername || "unknown"),   // kept for older screens
+            time: millis(d.createdAt)
+        });
     }
 
-        function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature) + (SOL.explorerSuffix || ""); }
+    // Does this receipt match what really happened on chain? A recipient should not trust
+    // a receipt just because someone wrote it: check the transfer itself.
+    async function verifyReceived(rec) {
+        try {
+            const conn = getConnection();
+            const tx = await conn.getParsedTransaction(rec.id, { commitment: "confirmed", maxSupportedTransactionVersion: 0 });
+            if (!tx) return Date.now() - rec.time > 120000 ? "Unverified" : null;   // not visible yet
+            if (tx.meta && tx.meta.err) return "Failed";
+            const w = window.solanaWeb3;
+            const ata = VYROTransfer.deriveAta(new w.PublicKey(rec.recipientAddress), new w.PublicKey(SOL.usdcMint)).toBase58();
+            const units = VYROTransfer.parseAmount(rec.amount, SOL.usdcDecimals);
+            const ok = units.ok && tx.transaction.message.instructions.some(function (ix) {
+                const p = ix.parsed;
+                return p && p.type === "transferChecked" && p.info &&
+                    p.info.destination === ata &&
+                    p.info.mint === SOL.usdcMint &&
+                    p.info.tokenAmount && p.info.tokenAmount.amount === units.units.toString();
+            });
+            return ok ? "Confirmed" : "Unverified";
+        } catch (e) { return null; }   // network trouble: leave the stored status alone
+    }
+
+    // Updates "Submitted" receipts from the chain, so a payment shows Confirmed even if the
+    // sender closed the app before it finished.
+    async function refreshStatuses(list, myUid) {
+        const open = list.filter(function (r) { return r.status === "Submitted"; });
+        if (!open.length) return;
+        try {
+            const res = await getConnection().getSignatureStatuses(open.map(function (r) { return r.id; }), { searchTransactionHistory: true });
+            open.forEach(function (r, i) {
+                const st = res.value[i];
+                if (!st) return;
+                const next = st.err ? "Failed" : (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized") ? "Confirmed" : null;
+                if (!next) return;
+                r.status = next;
+                if (r.fromUid === myUid) updateRecordStatus(r.id, next);   // only the sender may write it back
+            });
+        } catch (e) { /* leave statuses as stored */ }
+    }
+
+    async function loadHistory() {
+        const me = firebaseAuth.currentUser;
+        if (!me) return [];
+        // Two simple queries (no composite index needed), merged and sorted here.
+        const results = await Promise.all([
+            paymentsCol().where("fromUid", "==", me.uid).limit(100).get(),
+            paymentsCol().where("toUid", "==", me.uid).limit(100).get()
+        ]);
+        const byId = {};
+        results.forEach(function (snap) { snap.docs.forEach(function (d) { byId[d.id] = d.data(); }); });
+        const list = Object.keys(byId).map(function (id) { return decorate(byId[id], me.uid); });
+        list.sort(function (a, b) { return b.time - a.time; });
+        const recent = list.slice(0, 50);
+
+        await refreshStatuses(recent, me.uid);
+        await Promise.all(recent.filter(function (r) { return r.direction === "received" && r.status !== "Failed"; }).map(async function (r) {
+            const v = await verifyReceived(r);
+            if (v === "Unverified" || v === "Failed") r.status = v;
+            else if (v === "Confirmed" && r.status === "Submitted") r.status = "Confirmed";
+        }));
+        return recent;
+    }
+
+    // ---------- balances (what the home screen shows) ----------
+    // Reads the wallet's USDC and SOL straight from the chain.
+    async function getBalances(address) {
+        const conn = getConnection();
+        const w = window.solanaWeb3;
+        const owner = new w.PublicKey(address);
+        const ata = VYROTransfer.deriveAta(owner, new w.PublicKey(SOL.usdcMint));
+        let usdcUnits = 0n;
+        try {
+            const b = await conn.getTokenAccountBalance(ata, "confirmed");
+            usdcUnits = BigInt(b.value.amount);
+        } catch (e) {
+            // No USDC account yet means a balance of zero. Anything else is a real error.
+            if (!/could not find account/i.test(String(e && e.message))) throw e;
+        }
+        const lamports = await conn.getBalance(owner, "confirmed");
+        return { usdc: VYROTransfer.formatUnits(usdcUnits, SOL.usdcDecimals), sol: lamports / 1e9 };
+    }
+
+    function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature) + (SOL.explorerSuffix || ""); }
 
     window.VYROPayments = {
         setPendingPayment, getPendingPayment, clearPendingPayment,
         validatePayment, validateWallet, resolveRecipient,
-        quote, submit, loadHistory, explorerUrl
+        quote, submit, loadHistory, getBalances, explorerUrl
     };
 })();
-       
