@@ -847,14 +847,22 @@ if (continueSendButton) {
 function renderConfirmScreen(q, wallet) {
     const set = function (id, text) { const el = document.getElementById(id); if (el) el.textContent = text; };
     set("confirm-recipient", q.recipient);
-    set("confirm-amount", VYROTransfer.formatUnits(BigInt(q.units), window.VYRO_CONFIG.solana.usdcDecimals) + " USDC");
+    const dec = window.VYRO_CONFIG.solana.usdcDecimals;
+    const feeUnits = BigInt(q.feeUnits || "0");
+    const totalUnits = BigInt(q.totalUnits || q.units);
+    set("confirm-amount", VYROTransfer.formatUnits(BigInt(q.units), dec) + " USDC");
+    set("confirm-fee", feeUnits > 0n
+        ? VYROTransfer.formatUnits(feeUnits, dec) + " USDC (" + (q.feeBps / 100) + "%)"
+        : "None");
+    set("confirm-total", VYROTransfer.formatUnits(totalUnits, dec) + " USDC");
     set("confirm-network", q.network);
     set("confirm-wallet", (wallet.provider || wallet.type || "External Wallet") + " • " + wallet.address.slice(0, 6) + "..." + wallet.address.slice(-4));
 
     const walletName = wallet.provider || "your wallet";
     set("confirm-disclaimer",
         "By tapping CONFIRM PAYMENT, you authorize a transfer of " +
-        VYROTransfer.formatUnits(BigInt(q.units), window.VYRO_CONFIG.solana.usdcDecimals) + " USDC to " + q.recipient +
+        VYROTransfer.formatUnits(BigInt(q.units), dec) + " USDC to " + q.recipient +
+        (feeUnits > 0n ? ", plus a " + VYROTransfer.formatUnits(feeUnits, dec) + " USDC VYRO fee (" + VYROTransfer.formatUnits(totalUnits, dec) + " USDC in total)" : "") +
         ". Your " + walletName + " will open a request, and the payment only happens if you approve and sign it there. " +
         "VYRO cannot move your funds without your approval. Blockchain payments cannot be reversed.");
 
@@ -862,6 +870,8 @@ function renderConfirmScreen(q, wallet) {
     if (q.createsRecipientAccount) {
         note += " This is your first payment to " + q.recipient + ", so about " + (q.rentLamports / 1e9).toFixed(5) +
             " SOL is also needed once to open their USDC account.";
+    } else if (q.createsFeeAccount) {
+        note += " About " + (q.rentLamports / 1e9).toFixed(5) + " SOL is also needed once to open VYRO's fee account.";
     }
     set("confirm-fee-note", note);
 }
@@ -961,6 +971,7 @@ function showPaymentResult(result) {
     const summary = document.getElementById("payment-success-summary");
     if (summary) {
         summary.textContent = result.amount + " USDC to " + result.recipient +
+            (result.fee && result.fee !== "0" ? " (+ " + result.fee + " USDC VYRO fee)" : "") +
             (result.status === "Confirmed" ? " · Confirmed on Solana" : " · Submitted, waiting for confirmation");
     }
     const link = document.getElementById("payment-success-link");
