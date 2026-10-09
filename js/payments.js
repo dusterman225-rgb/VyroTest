@@ -13,6 +13,7 @@
 
     const CFG = window.VYRO_CONFIG;
     const SOL = CFG.solana;
+    const FEE = CFG.fee || {};
 
     let pending = null;      // in-memory only: a half-finished payment should not outlive the tab
     let connection = null;
@@ -30,11 +31,17 @@
     function clearPendingPayment() { pending = null; }
 
     // ---------- validation ----------
+    // Minimum payment in USDC (1 USDC = $1). config.js may override it with limits.minAmountPerPayment.
+    function minAmountText() { return (CFG.limits && CFG.limits.minAmountPerPayment) || "1"; }
+
     function validatePayment(p) {
         if (!p) return { valid: false, error: "No payment is waiting for confirmation." };
         if (!VYROTransfer.isValidUsername(VYROTransfer.normalizeUsername(p.recipient))) return { valid: false, error: "Recipient username is invalid." };
         const amt = VYROTransfer.parseAmount(p.amount, SOL.usdcDecimals);
         if (!amt.ok) return { valid: false, error: amt.error };
+        const minText = minAmountText();
+        if (amt.units < VYROTransfer.parseAmount(minText, SOL.usdcDecimals).units)
+            return { valid: false, error: "The minimum payment is " + minText + " USDC." };
         if (amt.units > VYROTransfer.parseAmount(CFG.limits.maxAmountPerPayment, SOL.usdcDecimals).units)
             return { valid: false, error: "Amount is above the " + CFG.limits.maxAmountPerPayment + " USDC per-payment limit." };
         if (p.network && String(p.network).toLowerCase() !== "solana") return { valid: false, error: "This payment network is not supported yet." };
@@ -66,7 +73,7 @@
             throw userError("@" + name + " has not set up a receiving wallet yet.");
         const me = firebaseAuth.currentUser;
         if (me && data.uid === me.uid) throw userError("You can't send a payment to yourself.");
-        return { username: name, uid: data.uid, address: data.walletAddress };
+        return { username: name, uid: data.uid, address: data.walletAddress, verificationWord: data.verificationWord || "" };
     }
 
     function userError(message) { const e = new Error(message); e.userFacing = true; return e; }
@@ -85,17 +92,32 @@
         pending = Object.assign({}, p, {
             recipientAddress: to.address,
             recipientUid: to.uid,
+            recipientWord: to.verificationWord,
             units: pv.units.toString(),
             createsRecipientAccount: built.createsRecipientAccount,
+            createsFeeAccount: built.createsFeeAccount,
+            feeUnits: built.feeUnits.toString(),
+            totalUnits: built.totalUnits.toString(),
+            feeBps: built.feeUnits > 0n ? FEE.bps : 0,
             rentLamports: built.rentLamports,
             feeLamports: built.feeLamports
         });
         return getPendingPayment();
     }
 
+    // VYRO's service fee for a payment of `units`, paid by the sender on top. Zero when no fee is
+    // configured, and when the fee wallet itself is the sender (it does not pay itself).
+    function feeFor(sender, units) {
+        if (!FEE.bps || !FEE.treasuryAddress || sender === FEE.treasuryAddress) return 0n;
+        return VYROTransfer.feeUnits(units, FEE.bps);
+    }
+
     async function buildWithFriendlyErrors(sender, recipient, units) {
         try {
-            return await VYROTransfer.buildUsdcTransfer({ connection: getConnection(), config: SOL, sender: sender, recipient: recipient, units: units });
+            return await VYROTransfer.buildUsdcTransfer({
+                connection: getConnection(), config: SOL, sender: sender, recipient: recipient, units: units,
+                feeUnits: feeFor(sender, units), feeRecipient: FEE.treasuryAddress
+            });
         } catch (e) {
             if (e.code === "INSUFFICIENT_USDC" || e.code === "INSUFFICIENT_SOL") throw userError(e.message);
             console.error("VYRO build error:", e);
@@ -170,7 +192,11 @@
             if (final !== "Submitted") updateRecordStatus(signature, final);
 
             clearPendingPayment();
-            return Object.assign({}, record, { recipient: "@" + to.username, status: final });
+            return Object.assign({}, record, {
+                recipient: "@" + to.username,
+                status: final,
+                fee: VYROTransfer.formatUnits(built.feeUnits, SOL.usdcDecimals)   // shown on the success screen; not stored
+            });
         } finally {
             inFlight = false;
         }
@@ -310,6 +336,9 @@
     function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature) + (SOL.explorerSuffix || ""); }
 
     window.VYROPayments = {
+        version: "2026-10-09-r4",   // app.js compares this to spot a stale copy on the site
+        feeConfigured: !!(FEE.bps && FEE.treasuryAddress),
+        minAmount: minAmountText,
         setPendingPayment, getPendingPayment, clearPendingPayment,
         validatePayment, validateWallet, resolveRecipient,
         quote, submit, loadHistory, getBalances, explorerUrl
