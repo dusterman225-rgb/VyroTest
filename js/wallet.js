@@ -69,6 +69,7 @@
     function getWalletType() { const a = getActiveWallet(); return a ? a.type : null; }
     function getProvider() { const a = getActiveWallet(); return a ? a.provider : null; }
     function getReceivingAddress() { return receivingAddress; }
+        function getUsername() { return username; }
 
     // ---------- account lifecycle (called by auth.js) ----------
     function setUser(newUid) {
@@ -449,7 +450,7 @@
 
     window.VYROWallet = {
         init, connect, disconnect, restoreConnection,
-        setUser, setUsername, setReceivingWallet, getReceivingAddress,
+                setUser, setUsername, setReceivingWallet, getReceivingAddress, getUsername,
         getWallets, getActiveWallet, setActiveWallet, addWallet, removeWallet,
         getAddress, getActiveAddress: getAddress, isConnected, getWalletType, getProvider,
         requestSignature, isUserRejection, updateUI
