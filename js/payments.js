@@ -13,6 +13,7 @@
 
     const CFG = window.VYRO_CONFIG;
     const SOL = CFG.solana;
+    const FEE = CFG.fee || {};
 
     let pending = null;      // in-memory only: a half-finished payment should not outlive the tab
     let connection = null;
@@ -87,15 +88,29 @@
             recipientUid: to.uid,
             units: pv.units.toString(),
             createsRecipientAccount: built.createsRecipientAccount,
+            createsFeeAccount: built.createsFeeAccount,
+            feeUnits: built.feeUnits.toString(),
+            totalUnits: built.totalUnits.toString(),
+            feeBps: built.feeUnits > 0n ? FEE.bps : 0,
             rentLamports: built.rentLamports,
             feeLamports: built.feeLamports
         });
         return getPendingPayment();
     }
 
+    // VYRO's service fee for a payment of `units`, paid by the sender on top. Zero when no fee is
+    // configured, and when the fee wallet itself is the sender (it does not pay itself).
+    function feeFor(sender, units) {
+        if (!FEE.bps || !FEE.treasuryAddress || sender === FEE.treasuryAddress) return 0n;
+        return VYROTransfer.feeUnits(units, FEE.bps);
+    }
+
     async function buildWithFriendlyErrors(sender, recipient, units) {
         try {
-            return await VYROTransfer.buildUsdcTransfer({ connection: getConnection(), config: SOL, sender: sender, recipient: recipient, units: units });
+            return await VYROTransfer.buildUsdcTransfer({
+                connection: getConnection(), config: SOL, sender: sender, recipient: recipient, units: units,
+                feeUnits: feeFor(sender, units), feeRecipient: FEE.treasuryAddress
+            });
         } catch (e) {
             if (e.code === "INSUFFICIENT_USDC" || e.code === "INSUFFICIENT_SOL") throw userError(e.message);
             console.error("VYRO build error:", e);
@@ -170,7 +185,11 @@
             if (final !== "Submitted") updateRecordStatus(signature, final);
 
             clearPendingPayment();
-            return Object.assign({}, record, { recipient: "@" + to.username, status: final });
+            return Object.assign({}, record, {
+                recipient: "@" + to.username,
+                status: final,
+                fee: VYROTransfer.formatUnits(built.feeUnits, SOL.usdcDecimals)   // shown on the success screen; not stored
+            });
         } finally {
             inFlight = false;
         }
