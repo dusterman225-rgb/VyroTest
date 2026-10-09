@@ -123,8 +123,43 @@
         )[0];
     }
 
+    // Fee in base units: floor(units * bps / 10000). 100 bps = 1%.
+    function feeUnits(units, bps) {
+        return (BigInt(units) * BigInt(bps)) / 10000n;
+    }
+
+    function createAtaInstruction(w, payer, ata, owner, mint) {
+        return new w.TransactionInstruction({
+            programId: new w.PublicKey(ATA_PROGRAM_ID),
+            keys: [
+                { pubkey: payer, isSigner: true, isWritable: true },        // payer
+                { pubkey: ata, isSigner: false, isWritable: true },         // ata
+                { pubkey: owner, isSigner: false, isWritable: false },      // owner
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: new w.PublicKey(SYSTEM_PROGRAM_ID), isSigner: false, isWritable: false },
+                { pubkey: new w.PublicKey(TOKEN_PROGRAM_ID), isSigner: false, isWritable: false }
+            ],
+            data: toBuf(createAtaIdempotentData())
+        });
+    }
+
+    function transferInstruction(w, fromAta, mint, toAta, authority, units, decimals) {
+        return new w.TransactionInstruction({
+            programId: new w.PublicKey(TOKEN_PROGRAM_ID),
+            keys: [
+                { pubkey: fromAta, isSigner: false, isWritable: true },
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: toAta, isSigner: false, isWritable: true },
+                { pubkey: authority, isSigner: true, isWritable: false }
+            ],
+            data: toBuf(transferCheckedData(units, decimals))
+        });
+    }
+
     // Reads on-chain state and returns everything the UI needs to show the user
     // BEFORE they are asked to sign, plus the unsigned transaction itself.
+    // Optional fee: opts.feeUnits (BigInt-able) + opts.feeRecipient (owner address). The fee is a
+    // second transfer in the SAME transaction, paid by the sender on top of the payment.
     async function buildUsdcTransfer(opts) {
         const w = web3();
         const cfg = opts.config;
@@ -133,9 +168,14 @@
         const recipient = new w.PublicKey(opts.recipient);
         const mint = new w.PublicKey(cfg.usdcMint);
         const units = BigInt(opts.units);
+        const feeAmount = BigInt(opts.feeUnits || 0);
+        const feeOwner = feeAmount > 0n && opts.feeRecipient ? new w.PublicKey(opts.feeRecipient) : null;
+        const chargedFee = feeOwner ? feeAmount : 0n;
+        const totalUnits = units + chargedFee;
 
         const senderAta = deriveAta(sender, mint);
         const recipientAta = deriveAta(recipient, mint);
+        const feeAta = feeOwner ? deriveAta(feeOwner, mint) : null;
 
         // Sender's USDC balance (token account may not exist => 0).
         let senderUnits = 0n;
@@ -143,8 +183,12 @@
             const bal = await connection.getTokenAccountBalance(senderAta, "confirmed");
             senderUnits = BigInt(bal.value.amount);
         } catch (e) { senderUnits = 0n; }
-        if (senderUnits < units) {
-            const err = new Error("Insufficient USDC. This wallet holds " + formatUnits(senderUnits, cfg.usdcDecimals) + " USDC.");
+        if (senderUnits < totalUnits) {
+            const err = new Error(chargedFee > 0n
+                ? "Insufficient USDC. This payment needs " + formatUnits(totalUnits, cfg.usdcDecimals) + " USDC (" +
+                  formatUnits(units, cfg.usdcDecimals) + " + " + formatUnits(chargedFee, cfg.usdcDecimals) +
+                  " VYRO fee) and this wallet holds " + formatUnits(senderUnits, cfg.usdcDecimals) + " USDC."
+                : "Insufficient USDC. This wallet holds " + formatUnits(senderUnits, cfg.usdcDecimals) + " USDC.");
             err.code = "INSUFFICIENT_USDC";
             throw err;
         }
@@ -152,34 +196,21 @@
         const recipientAtaInfo = await connection.getAccountInfo(recipientAta, "confirmed");
         const needsAta = !recipientAtaInfo;
 
-        const ixs = [];
-        if (needsAta) {
-            ixs.push(new w.TransactionInstruction({
-                programId: new w.PublicKey(ATA_PROGRAM_ID),
-                keys: [
-                    { pubkey: sender, isSigner: true, isWritable: true },        // payer
-                    { pubkey: recipientAta, isSigner: false, isWritable: true }, // ata
-                    { pubkey: recipient, isSigner: false, isWritable: false },   // owner
-                    { pubkey: mint, isSigner: false, isWritable: false },
-                    { pubkey: new w.PublicKey(SYSTEM_PROGRAM_ID), isSigner: false, isWritable: false },
-                    { pubkey: new w.PublicKey(TOKEN_PROGRAM_ID), isSigner: false, isWritable: false }
-                ],
-                data: toBuf(createAtaIdempotentData())
-            }));
+        // The fee wallet's USDC account normally exists already. If it does not, open it once.
+        let needsFeeAta = false;
+        if (feeAta && feeAta.toBase58() !== recipientAta.toBase58()) {
+            needsFeeAta = !(await connection.getAccountInfo(feeAta, "confirmed"));
         }
-        ixs.push(new w.TransactionInstruction({
-            programId: new w.PublicKey(TOKEN_PROGRAM_ID),
-            keys: [
-                { pubkey: senderAta, isSigner: false, isWritable: true },
-                { pubkey: mint, isSigner: false, isWritable: false },
-                { pubkey: recipientAta, isSigner: false, isWritable: true },
-                { pubkey: sender, isSigner: true, isWritable: false }
-            ],
-            data: toBuf(transferCheckedData(units, cfg.usdcDecimals))
-        }));
 
-        // SOL needed: base fee (5000 lamports/signature) + rent if we create the recipient account.
-        const rentLamports = needsAta ? await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SIZE) : 0;
+        const ixs = [];
+        if (needsAta) ixs.push(createAtaInstruction(w, sender, recipientAta, recipient, mint));
+        if (needsFeeAta) ixs.push(createAtaInstruction(w, sender, feeAta, feeOwner, mint));
+        ixs.push(transferInstruction(w, senderAta, mint, recipientAta, sender, units, cfg.usdcDecimals));
+        if (feeOwner) ixs.push(transferInstruction(w, senderAta, mint, feeAta, sender, chargedFee, cfg.usdcDecimals));
+
+        // SOL needed: base fee (5000 lamports/signature) + rent for any account we open.
+        const newAccounts = (needsAta ? 1 : 0) + (needsFeeAta ? 1 : 0);
+        const rentLamports = newAccounts ? newAccounts * (await connection.getMinimumBalanceForRentExemption(TOKEN_ACCOUNT_SIZE)) : 0;
         const feeLamports = 5000;
         const solBalance = await connection.getBalance(sender, "confirmed");
         if (solBalance < rentLamports + feeLamports) {
@@ -201,8 +232,11 @@
             lastValidBlockHeight: latest.lastValidBlockHeight,
             recipientTokenAccount: recipientAta.toBase58(),
             createsRecipientAccount: needsAta,
+            createsFeeAccount: needsFeeAta,
             rentLamports: rentLamports,
-            feeLamports: feeLamports
+            feeLamports: feeLamports,
+            feeUnits: chargedFee,
+            totalUnits: totalUnits
         };
     }
 
@@ -212,7 +246,7 @@
         base58Encode, base58Decode, isValidSolanaAddress,
         transferCheckedData, createAtaIdempotentData,
         bytesToBase64, base64ToBytes,
-        buildUsdcTransfer, deriveAta,
+        buildUsdcTransfer, deriveAta, feeUnits,
         TOKEN_PROGRAM_ID, ATA_PROGRAM_ID
     };
 
