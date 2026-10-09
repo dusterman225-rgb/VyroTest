@@ -38,6 +38,79 @@
 
 <main id="app">
 
+<!-- Profile avatar: one button, pinned top-right, shown on every screen after login. -->
+<div id="global-profile-menu" class="global-profile-menu">
+    <div class="profile-menu">
+
+        <button
+            id="profile-menu-btn"
+            class="profile-avatar-button"
+            type="button"
+            aria-expanded="false"
+            aria-label="Open profile menu"
+        >
+            <span id="profile-avatar-initial">V</span>
+        </button>
+
+        <div
+            id="profile-dropdown"
+            class="profile-dropdown"
+        >
+
+            <div class="profile-dropdown-header">
+                <span id="profile-menu-username">
+                    @username
+                </span>
+            </div>
+
+            <button
+                id="profile-menu-profile"
+                class="profile-menu-item"
+                type="button"
+            >
+                PROFILE
+            </button>
+
+            <button
+                id="profile-menu-settings"
+                class="profile-menu-item"
+                type="button"
+            >
+                SETTINGS
+            </button>
+
+            <button
+                id="profile-menu-security"
+                class="profile-menu-item"
+                type="button"
+            >
+                SECURITY
+            </button>
+
+            <button
+                id="profile-menu-wallets"
+                class="profile-menu-item"
+                type="button"
+            >
+                WALLETS
+            </button>
+
+            <div class="profile-menu-divider"></div>
+
+            <button
+                id="logout-btn"
+                class="profile-menu-item logout"
+                type="button"
+            >
+                LOG OUT
+            </button>
+
+        </div>
+
+    </div>
+</div>
+
+
 
 <!-- =========================================================
      WELCOME
@@ -573,74 +646,6 @@
         VYRO
     </div>
 
-    <div class="profile-menu">
-
-        <button
-            id="profile-menu-btn"
-            class="profile-avatar-button"
-            type="button"
-            aria-expanded="false"
-            aria-label="Open profile menu"
-        >
-            <span id="profile-avatar-initial">V</span>
-        </button>
-
-        <div
-            id="profile-dropdown"
-            class="profile-dropdown"
-        >
-
-            <div class="profile-dropdown-header">
-                <span id="profile-menu-username">
-                    @username
-                </span>
-            </div>
-
-            <button
-                id="profile-menu-profile"
-                class="profile-menu-item"
-                type="button"
-            >
-                PROFILE
-            </button>
-
-            <button
-                id="profile-menu-settings"
-                class="profile-menu-item"
-                type="button"
-            >
-                SETTINGS
-            </button>
-
-            <button
-                id="profile-menu-security"
-                class="profile-menu-item"
-                type="button"
-            >
-                SECURITY
-            </button>
-
-            <button
-                id="profile-menu-wallets"
-                class="profile-menu-item"
-                type="button"
-            >
-                WALLETS
-            </button>
-
-            <div class="profile-menu-divider"></div>
-
-            <button
-                id="logout-btn"
-                class="profile-menu-item logout"
-                type="button"
-            >
-                LOG OUT
-            </button>
-
-        </div>
-
-    </div>
 
 </div>
 
@@ -856,6 +861,15 @@
                     Recipient found
                 </small>
 
+                <div class="recipient-word">
+                    <span>VERIFICATION WORD</span>
+                    <strong id="recipient-word">—</strong>
+                </div>
+
+                <small class="recipient-word-hint">
+                    Check that this matches what the recipient sees in their VYRO profile.
+                </small>
+
             </div>
 
         </div>
@@ -875,6 +889,10 @@
                 min="0"
                 step="any"
             >
+
+            <p class="min-note" id="send-min-note">
+                Minimum payment: 1 USDC ($1.00). VYRO adds a 1% service fee on top.
+            </p>
 
         </div>
 
@@ -1019,32 +1037,15 @@
         <div class="verification-box">
 
             <div class="verification-title">
-                VERIFICATION
+                RECIPIENT VERIFICATION WORD
             </div>
 
+            <strong id="confirm-word" class="confirm-word">—</strong>
 
             <p>
-                Ask the recipient for their VYRO
-                verification word before confirming.
+                Make sure this matches the word the recipient sees in their
+                VYRO profile before you confirm.
             </p>
-
-
-            <div class="form-group">
-
-                <label for="verification-word-confirm">
-                    Verification Word
-                </label>
-
-                <input
-                    id="verification-word-confirm"
-                    type="text"
-                    placeholder="Enter verification word"
-                    autocomplete="off"
-                    autocapitalize="none"
-                    spellcheck="false"
-                >
-
-            </div>
 
         </div>
 
@@ -1141,6 +1142,10 @@
             </strong>
 
         </div>
+
+        <p class="receive-note min-note">
+            Minimum payment: 1 USDC ($1.00).
+        </p>
 
         <p class="receive-note">
             To get paid, give people your username. They send to it inside VYRO
