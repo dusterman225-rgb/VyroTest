@@ -70,21 +70,15 @@
         // The Firestore rules require email_verified in the ID token, so refresh it now.
         try { await current.getIdToken(true); } catch (e) { console.warn("VYRO token refresh failed:", e); }
 
-                const data = await loadProfile(current.uid);
-
-        // One-time repair: accounts created before the username directory existed
-        // have no usernames/{username} entry, so nobody could send to them.
-        if (data.username) {
-            try {
-                const ref = firebaseDB.collection("usernames").doc(data.username);
-                const snap = await ref.get();
-                if (!snap.exists) {
-                    await ref.set({ uid: current.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-                }
-            } catch (e) { console.warn("VYRO username directory repair failed:", e); }
+        const data = await loadProfile(current.uid);
+        // Keep the public directory copy of the verification word current (senders see it when they
+        // look this user up). Covers accounts made before the directory held the word.
+        if (data.username && data.verificationWord) {
+            firebaseDB.collection("usernames").doc(data.username)
+                .update({ verificationWord: data.verificationWord })
+                .catch(function (e) { console.warn("VYRO: directory word sync skipped:", e); });
         }
-
-        if (window.VYROWallet) { VYROWallet.setUser(current.uid); await VYROWallet.setUsername(data.username || null); }
+        if (window.VYROWallet) { VYROWallet.setUser(current.uid); VYROWallet.setUsername(data.username || null); }
         if (data.securitySetupComplete !== true) {
             go("two-factor-screen");
             return;
@@ -119,7 +113,7 @@
             try {
                 const now = firebase.firestore.FieldValue.serverTimestamp();
                 const batch = firebaseDB.batch();
-                batch.set(firebaseDB.collection("usernames").doc(username), { uid: user.uid, createdAt: now });
+                batch.set(firebaseDB.collection("usernames").doc(username), { uid: user.uid, verificationWord, createdAt: now });
                 batch.set(firebaseDB.collection("users").doc(user.uid), {
                     username, email, verificationWord, twoFactorEnabled:false, securitySetupComplete:false, createdAt: now
                 });
