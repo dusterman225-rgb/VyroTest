@@ -1,23 +1,22 @@
 // =========================================================
-// VYRO — APP CONFIGURATION
+// VYRO — APP CONFIGURATION (DEVNET TEST COPY)
 // =========================================================
-// Everything network-specific lives here so that adding a new chain
-// or asset later is a config change, not a code hunt.
+// Fill in the two lines marked  <<< PUT YOUR ... HERE  and nothing else needs to change.
 
 window.VYRO_CONFIG = Object.freeze({
     appName: "VYRO",
 
-    // Active payment rail (V1: USDC on Solana mainnet).
     network: "solana",
     asset: "USDC",
 
-        solana: Object.freeze({
-        // DEVNET (testing only). Switch back to mainnet values before launch.
+    solana: Object.freeze({
+        // Solana DEVNET (used by WalletConnect).
         chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 
-        rpcUrl: "https://api.devnet.solana.com",
+        // <<< PUT YOUR DEVNET RPC URL HERE (your Alchemy devnet URL, key included)
+        rpcUrl: "https://solana-devnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY",
 
-        // Circle's devnet USDC mint (the token shown as 4zMM...ncDU in Solflare).
+        // Devnet USDC.
         usdcMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
         usdcDecimals: 6,
 
@@ -25,14 +24,20 @@ window.VYRO_CONFIG = Object.freeze({
         explorerSuffix: "?cluster=devnet"
     }),
 
-    // Safety limits enforced client-side (UX guard-rails, not security controls).
+    // VYRO service fee: charged to the SENDER on top of the payment (the recipient gets the full
+    // amount). 100 basis points = 1%. Sent to the fee wallet inside the same transaction.
+    fee: Object.freeze({
+        bps: 100,
+        treasuryAddress: "Uh6ubJa9zWpZ4GVBcD7aBMMGi4Y3wy1zycG8yBYZzvU"
+    }),
+
     limits: Object.freeze({
+        minAmountPerPayment: "1",      // USDC ($1)
         maxAmountPerPayment: "10000"   // USDC
     }),
 
-    // Optional: add your WalletConnect Cloud project ID here.
-    // Injected wallets (Trust Wallet / Phantom / Solflare / Backpack) do not require it.
-    walletConnectProjectId: "44f320d19361d5829141766a65015080",
+    // <<< PUT YOUR WALLETCONNECT PROJECT ID HERE (between the quotes)
+    walletConnectProjectId: "",
     walletConnectMetadata: {
         name: "VYRO",
         description: "Non-custodial crypto transfers by username.",
@@ -40,4 +45,3 @@ window.VYRO_CONFIG = Object.freeze({
         icons: []
     }
 });
-          
