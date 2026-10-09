@@ -241,6 +241,7 @@
     }
 
     const api = {
+        version: "2026-10-09-r4",
         normalizeUsername, isValidUsername,
         parseAmount, formatUnits,
         base58Encode, base58Decode, isValidSolanaAddress,
