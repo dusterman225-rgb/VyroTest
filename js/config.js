@@ -25,6 +25,11 @@ window.VYRO_CONFIG = Object.freeze({
         explorerSuffix: "?cluster=devnet"
     }),
 
+        fee: Object.freeze({
+        bps: 100,
+        treasuryAddress: "Uh6ubJa9zWpZ4GVBcD7aBMMGi4Y3wy1zycG8yBYZzvU"
+    }),
+                              
     // Safety limits enforced client-side (UX guard-rails, not security controls).
     limits: Object.freeze({
         maxAmountPerPayment: "10000"   // USDC
