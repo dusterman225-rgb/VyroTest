@@ -150,6 +150,14 @@ function showScreen(screen, options) {
 
     screen.classList.add("active");
 
+    // The profile avatar (top-right) shows on every screen once the user is signed in.
+    const avatar = document.getElementById("global-profile-menu");
+    if (avatar) {
+        const authScreens = ["welcome-screen", "create-account-screen", "login-screen",
+            "email-verification-screen", "two-factor-screen", "two-factor-code-screen"];
+        avatar.classList.toggle("visible", authScreens.indexOf(screen.id) === -1);
+    }
+
     if (screen.id === "home-screen" && typeof window.refreshHomeBalance === "function") {
         window.refreshHomeBalance();
     }
@@ -815,6 +823,9 @@ if (continueSendButton) {
             return;
         }
 
+        const buildProblem = checkBuild();
+        if (buildProblem) { alert(buildProblem); return; }
+
         VYROPayments.setPendingPayment({
             recipient: "@" + recipientName,
             amount: amountText,
@@ -844,6 +855,23 @@ if (continueSendButton) {
     });
 }
 
+// Every payment file must be the matching version, or the VYRO fee could silently be skipped.
+// If a file on the site is old (not yet replaced, or cached), say exactly which one.
+const VYRO_EXPECTED_BUILD = "2026-10-09-r4";
+
+function checkBuild() {
+    const stale = [];
+    if (!window.VYROTransfer || window.VYROTransfer.version !== VYRO_EXPECTED_BUILD) stale.push("js/transfer.js");
+    if (!window.VYROPayments || window.VYROPayments.version !== VYRO_EXPECTED_BUILD) stale.push("js/payments.js");
+    if (stale.length) {
+        return "Setup problem: " + stale.join(" and ") + " on your site is an old version. Replace it with the latest file, wait a minute for the site to update, then reload.";
+    }
+    if (!window.VYROPayments.feeConfigured) {
+        return "Setup problem: js/config.js has no \"fee\" block (bps and treasuryAddress), so the VYRO fee would not be charged. Add it and reload.";
+    }
+    return null;
+}
+
 function renderConfirmScreen(q, wallet) {
     const set = function (id, text) { const el = document.getElementById(id); if (el) el.textContent = text; };
     set("confirm-recipient", q.recipient);
@@ -855,6 +883,7 @@ function renderConfirmScreen(q, wallet) {
         ? VYROTransfer.formatUnits(feeUnits, dec) + " USDC (" + (q.feeBps / 100) + "%)"
         : "None");
     set("confirm-total", VYROTransfer.formatUnits(totalUnits, dec) + " USDC");
+    set("confirm-word", q.recipientWord || "Not set yet");
     set("confirm-network", q.network);
     set("confirm-wallet", (wallet.provider || wallet.type || "External Wallet") + " • " + wallet.address.slice(0, 6) + "..." + wallet.address.slice(-4));
 
@@ -1017,6 +1046,8 @@ if (sendRecipientInput && recipientResult && recipientDisplay) {
                 const data = snap.exists ? snap.data() : null;
                 if (data && data.walletAddress) {
                     recipientDisplay.textContent = "@" + username;
+                    const wordEl = document.getElementById("recipient-word");
+                    if (wordEl) wordEl.textContent = data.verificationWord || "Not set yet";
                     recipientResult.classList.add("visible");
                 }
             } catch (error) {
@@ -2580,6 +2611,16 @@ if (saveVerificationWordButton) {
                             merge: true
                         }
                     );
+
+                // The directory copy is what senders see when they look you up.
+                const myName = (localStorage.getItem("vyro_username") || "").replace(/^@/, "");
+                if (myName) {
+                    try {
+                        await firebaseDB.collection("usernames").doc(myName).update({ verificationWord: newWord });
+                    } catch (syncError) {
+                        console.warn("VYRO: could not update the directory word:", syncError);
+                    }
+                }
 
 
                 alert(
