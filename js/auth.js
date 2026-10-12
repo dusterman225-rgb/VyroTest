@@ -78,6 +78,12 @@
                 .update({ verificationWord: data.verificationWord })
                 .catch(function (e) { console.warn("VYRO: directory word sync skipped:", e); });
         }
+        // Make sure this user can be found by partial-name search (accounts made before it existed).
+        if (data.username) {
+            const indexRef = firebaseDB.collection("usernameIndex").doc(data.username);
+            indexRef.get().then(function (s) { if (!s.exists) return indexRef.set({ username: data.username }); })
+                .catch(function (e) { console.warn("VYRO: search index sync skipped:", e); });
+        }
         if (window.VYROWallet) { VYROWallet.setUser(current.uid); VYROWallet.setUsername(data.username || null); }
         if (data.securitySetupComplete !== true) {
             go("two-factor-screen");
@@ -114,6 +120,8 @@
                 const now = firebase.firestore.FieldValue.serverTimestamp();
                 const batch = firebaseDB.batch();
                 batch.set(firebaseDB.collection("usernames").doc(username), { uid: user.uid, verificationWord, createdAt: now });
+                // Name-only entry that powers the live "type part of a username" search.
+                batch.set(firebaseDB.collection("usernameIndex").doc(username), { username });
                 batch.set(firebaseDB.collection("users").doc(user.uid), {
                     username, email, verificationWord, twoFactorEnabled:false, securitySetupComplete:false, createdAt: now
                 });
