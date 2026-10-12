@@ -14,7 +14,7 @@ window.VYRO_CONFIG = Object.freeze({
         chainId: "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
 
         // <<< PUT YOUR DEVNET RPC URL HERE (your Alchemy devnet URL, key included)
-        rpcUrl: "https://solana-devnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY",
+        rpcUrl: "https://solana-devnet.g.alchemy.com/v2/alch_X9mveVmXQneC5MXDJXAEi",
 
         // Devnet USDC.
         usdcMint: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
