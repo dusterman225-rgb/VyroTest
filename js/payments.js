@@ -140,6 +140,7 @@
             const sender = wv.wallet.address;
 
             stage("Checking recipient…");
+            await checkRequest(p);
             // Re-resolve right before signing: if the recipient changed their address
             // since the confirm screen was shown, stop rather than pay a different address.
             const to = await resolveRecipient(p.recipient);
@@ -186,6 +187,7 @@
                 type: "Send"
             };
             saveRecord(record);
+            if (p.requestId) markRequestPaid(p.requestId, signature);
 
             stage("Confirming on Solana…");
             const final = await waitForConfirmation(signature, built.lastValidBlockHeight);
@@ -193,6 +195,7 @@
 
             clearPendingPayment();
             return Object.assign({}, record, {
+                requestId: p.requestId || null,
                 recipient: "@" + to.username,
                 status: final,
                 fee: VYROTransfer.formatUnits(built.feeUnits, SOL.usdcDecimals)   // shown on the success screen; not stored
@@ -314,6 +317,113 @@
         return recent;
     }
 
+
+    // ---------- live username search ----------
+    // Partial match on the start of a username. Reads the name-only index, never the
+    // directory itself, so verification words and addresses are not exposed by a search.
+    async function searchUsernames(prefix) {
+        const p = VYROTransfer.normalizeUsername(prefix);
+        if (p.length < 2 || !/^[a-z0-9_]+$/.test(p)) return [];
+        const me = (VYROWallet.getUsername && VYROWallet.getUsername()) || "";
+        const snap = await firebaseDB.collection("usernameIndex")
+            .orderBy(firebase.firestore.FieldPath.documentId())
+            .startAt(p).endAt(p + "\uf8ff").limit(6).get();
+        return snap.docs.map(function (d) { return d.id; }).filter(function (n) { return n !== me; });
+    }
+
+    // ---------- payment requests ----------
+    // A request is a document the requester writes and the payer can read. It moves no money:
+    // the payer must still approve and sign a normal VYRO payment in their own wallet.
+    function requestsCol() { return firebaseDB.collection("requests"); }
+
+    function amountProblem(text) {
+        const amt = VYROTransfer.parseAmount(text, SOL.usdcDecimals);
+        if (!amt.ok) return { error: amt.error };
+        const minText = minAmountText();
+        if (amt.units < VYROTransfer.parseAmount(minText, SOL.usdcDecimals).units) return { error: "The minimum is " + minText + " USDC." };
+        if (amt.units > VYROTransfer.parseAmount(CFG.limits.maxAmountPerPayment, SOL.usdcDecimals).units)
+            return { error: "The maximum is " + CFG.limits.maxAmountPerPayment + " USDC." };
+        return { units: amt.units };
+    }
+
+    async function createRequest(rawUsername, amountText) {
+        const me = firebaseAuth.currentUser;
+        if (!me) throw userError("Please log in again.");
+        const myName = VYROWallet.getUsername && VYROWallet.getUsername();
+        if (!myName) throw userError("Your username is not loaded yet. Please try again.");
+        if (!VYROWallet.getReceivingAddress())
+            throw userError("Choose a receiving wallet first (Receive → Choose receiving wallet), so the money has somewhere to go.");
+
+        const name = VYROTransfer.normalizeUsername(rawUsername);
+        if (!VYROTransfer.isValidUsername(name)) throw userError("Enter a valid VYRO username.");
+        const ap = amountProblem(amountText);
+        if (ap.error) throw userError(ap.error);
+
+        let snap;
+        try { snap = await firebaseDB.collection("usernames").doc(name).get(); }
+        catch (e) { console.error("VYRO request lookup error:", e); throw userError("Could not look up @" + name + ". Check your connection and try again."); }
+        if (!snap.exists) throw userError("@" + name + " was not found on VYRO.");
+        const data = snap.data() || {};
+        if (data.uid === me.uid) throw userError("You can't request money from yourself.");
+
+        const doc = {
+            fromUid: me.uid, fromUsername: myName,
+            toUid: data.uid, toUsername: name,
+            amount: VYROTransfer.formatUnits(ap.units, SOL.usdcDecimals),
+            asset: "USDC", network: "Solana", status: "Pending",
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        const ref = requestsCol().doc();
+        try { await ref.set(doc); }
+        catch (e) { console.error("VYRO request save error:", e); throw userError("Could not send the request. Please try again."); }
+        return Object.assign({ id: ref.id }, doc);
+    }
+
+    async function loadRequests() {
+        const me = firebaseAuth.currentUser;
+        if (!me) return [];
+        const results = await Promise.all([
+            requestsCol().where("fromUid", "==", me.uid).limit(50).get(),
+            requestsCol().where("toUid", "==", me.uid).limit(50).get()
+        ]);
+        const byId = {};
+        results.forEach(function (snap) { snap.docs.forEach(function (d) { byId[d.id] = Object.assign({ id: d.id }, d.data()); }); });
+        return Object.keys(byId).map(function (id) {
+            const r = byId[id];
+            const incoming = r.toUid === me.uid;
+            return Object.assign({}, r, {
+                direction: incoming ? "incoming" : "outgoing",
+                counterparty: "@" + ((incoming ? r.fromUsername : r.toUsername) || "unknown"),
+                time: millis(r.createdAt)
+            });
+        }).sort(function (a, b) { return b.time - a.time; });
+    }
+
+    // Payer declines (status Declined) or requester withdraws (status Cancelled).
+    async function respondToRequest(id, status) {
+        try { await requestsCol().doc(id).update({ status: status }); }
+        catch (e) { console.error("VYRO request update error:", e); throw userError("Could not update the request. Please try again."); }
+    }
+
+    function markRequestPaid(id, signature) {
+        try { requestsCol().doc(id).update({ status: "Paid", paymentId: signature }).catch(function (e) { console.warn("VYRO: could not mark request paid", e); }); }
+        catch (e) { /* the payment itself is on chain; the request status is a convenience */ }
+    }
+
+    // Right before signing: the request must still be open, addressed to this user, and unchanged.
+    async function checkRequest(p) {
+        if (!p.requestId) return;
+        let snap;
+        try { snap = await requestsCol().doc(p.requestId).get(); }
+        catch (e) { throw userError("Could not check this request. Please try again."); }
+        const r = snap.exists ? snap.data() : null;
+        const me = firebaseAuth.currentUser;
+        if (!r || !me || r.toUid !== me.uid) throw userError("This request is no longer available.");
+        if (r.status !== "Pending") throw userError("This request was already " + String(r.status).toLowerCase() + ".");
+        if (VYROTransfer.normalizeUsername(p.recipient) !== r.fromUsername || String(p.amount) !== r.amount)
+            throw userError("This request has changed. Please open it again.");
+    }
+
     // ---------- balances (what the home screen shows) ----------
     // Reads the wallet's USDC and SOL straight from the chain.
     async function getBalances(address) {
@@ -336,11 +446,12 @@
     function explorerUrl(signature) { return SOL.explorerTxUrl + encodeURIComponent(signature) + (SOL.explorerSuffix || ""); }
 
     window.VYROPayments = {
-        version: "2026-10-09-r4",   // app.js compares this to spot a stale copy on the site
+        version: "2026-10-12-r5",   // app.js compares this to spot a stale copy on the site
         feeConfigured: !!(FEE.bps && FEE.treasuryAddress),
         minAmount: minAmountText,
         setPendingPayment, getPendingPayment, clearPendingPayment,
         validatePayment, validateWallet, resolveRecipient,
-        quote, submit, loadHistory, getBalances, explorerUrl
+        quote, submit, loadHistory, getBalances, explorerUrl,
+        searchUsernames, createRequest, loadRequests, respondToRequest
     };
 })();
