@@ -161,6 +161,9 @@ function showScreen(screen, options) {
     if (screen.id === "home-screen" && typeof window.refreshHomeBalance === "function") {
         window.refreshHomeBalance();
     }
+    if (screen.id === "home-screen" && typeof window.refreshRequestsBadge === "function") {
+        window.refreshRequestsBadge();
+    }
 
     const updateHistory = !options || options.updateHistory !== false;
 
@@ -857,12 +860,12 @@ if (continueSendButton) {
 
 // Every payment file must be the matching version, or the VYRO fee could silently be skipped.
 // If a file on the site is old (not yet replaced, or cached), say exactly which one.
-const VYRO_EXPECTED_BUILD = "2026-10-09-r4";
+const VYRO_EXPECTED_BUILD = { transfer: "2026-10-09-r4", payments: "2026-10-12-r5" };
 
 function checkBuild() {
     const stale = [];
-    if (!window.VYROTransfer || window.VYROTransfer.version !== VYRO_EXPECTED_BUILD) stale.push("js/transfer.js");
-    if (!window.VYROPayments || window.VYROPayments.version !== VYRO_EXPECTED_BUILD) stale.push("js/payments.js");
+    if (!window.VYROTransfer || window.VYROTransfer.version !== VYRO_EXPECTED_BUILD.transfer) stale.push("js/transfer.js");
+    if (!window.VYROPayments || window.VYROPayments.version !== VYRO_EXPECTED_BUILD.payments) stale.push("js/payments.js");
     if (stale.length) {
         return "Setup problem: " + stale.join(" and ") + " on your site is an old version. Replace it with the latest file, wait a minute for the site to update, then reload.";
     }
@@ -1054,6 +1057,246 @@ if (sendRecipientInput && recipientResult && recipientDisplay) {
                 console.error("VYRO RECIPIENT LOOKUP ERROR:", error);
             }
         }, 300);
+    });
+}
+
+// =========================================================
+// VYRO — LIVE USERNAME SEARCH (partial names)
+// Shows matching usernames as the user types. Tapping one fills the box.
+// =========================================================
+
+let suppressSearchOnce = false;
+
+function attachUserSearch(input, list, onPick) {
+    if (!input || !list) return;
+    let timer = null;
+    let seq = 0;
+
+    function hide() { list.innerHTML = ""; list.classList.remove("visible"); }
+
+    input.addEventListener("input", function () {
+        clearTimeout(timer);
+        if (suppressSearchOnce) { suppressSearchOnce = false; return; }
+        const q = VYROTransfer.normalizeUsername(input.value);
+        if (q.length < 2) { seq++; hide(); return; }
+        const mine = ++seq;
+        timer = setTimeout(async function () {
+            let names = [];
+            try { names = await VYROPayments.searchUsernames(q); }
+            catch (error) { console.warn("VYRO: username search failed:", error); hide(); return; }
+            if (mine !== seq) return;   // the user kept typing
+            list.innerHTML = "";
+            if (!names.length) { hide(); return; }
+            names.forEach(function (name) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "suggestion";
+                b.setAttribute("role", "option");
+                b.textContent = "@" + name;
+                b.addEventListener("click", function () {
+                    input.value = name;
+                    hide();
+                    suppressSearchOnce = true;
+                    input.dispatchEvent(new Event("input"));   // runs the exact lookup below
+                    suppressSearchOnce = false;
+                    if (onPick) onPick(name);
+                });
+                list.appendChild(b);
+            });
+            list.classList.add("visible");
+        }, 200);
+    });
+}
+
+attachUserSearch(document.getElementById("send-recipient"), document.getElementById("recipient-suggestions"));
+attachUserSearch(document.getElementById("request-username"), document.getElementById("request-suggestions"));
+
+// =========================================================
+// VYRO — PAYMENT REQUESTS
+// A requester asks; the payer sees it in VYRO and approves a normal payment in their wallet.
+// =========================================================
+
+const requestMoneyScreen = document.getElementById("request-money-screen");
+const requestsScreen = document.getElementById("requests-screen");
+
+async function refreshRequestsBadge() {
+    const badge = document.getElementById("home-requests-badge");
+    if (!badge || !window.VYROPayments || !firebaseAuth.currentUser) return;
+    try {
+        const list = await VYROPayments.loadRequests();
+        const n = list.filter(function (r) { return r.direction === "incoming" && r.status === "Pending"; }).length;
+        badge.textContent = String(n);
+        badge.hidden = n === 0;
+    } catch (error) {
+        console.warn("VYRO: could not load requests:", error);
+    }
+}
+window.refreshRequestsBadge = refreshRequestsBadge;
+
+function requestRow(r) {
+    const incoming = r.direction === "incoming";
+    const row = document.createElement("div");
+    row.className = "request-row " + (incoming ? "is-incoming" : "is-outgoing");
+
+    const title = document.createElement("div");
+    title.className = "request-title";
+    title.textContent = incoming
+        ? r.counterparty + " requests " + r.amount + " USDC"
+        : "You requested " + r.amount + " USDC from " + r.counterparty;
+
+    const sub = document.createElement("div");
+    sub.className = "request-sub";
+    const when = r.time ? new Date(r.time).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+    sub.textContent = (when ? when + " · " : "") + r.status;
+
+    row.appendChild(title);
+    row.appendChild(sub);
+
+    if (r.status === "Pending") {
+        const actions = document.createElement("div");
+        actions.className = "request-actions";
+        if (incoming) {
+            const pay = document.createElement("button");
+            pay.type = "button";
+            pay.className = "primary-button request-btn";
+            pay.textContent = "PAY";
+            pay.addEventListener("click", function () { payRequest(r, pay); });
+            const decline = document.createElement("button");
+            decline.type = "button";
+            decline.className = "secondary-button request-btn";
+            decline.textContent = "DECLINE";
+            decline.addEventListener("click", function () { answerRequest(r, "Declined", decline); });
+            actions.appendChild(pay);
+            actions.appendChild(decline);
+        } else {
+            const cancel = document.createElement("button");
+            cancel.type = "button";
+            cancel.className = "secondary-button request-btn";
+            cancel.textContent = "CANCEL REQUEST";
+            cancel.addEventListener("click", function () { answerRequest(r, "Cancelled", cancel); });
+            actions.appendChild(cancel);
+        }
+        row.appendChild(actions);
+    }
+    return row;
+}
+
+let requestsLoadId = 0;
+
+async function loadRequestsScreen() {
+    const inBox = document.getElementById("requests-incoming");
+    const outBox = document.getElementById("requests-outgoing");
+    const inEmpty = document.getElementById("requests-incoming-empty");
+    const outEmpty = document.getElementById("requests-outgoing-empty");
+    if (!inBox || !outBox) return;
+
+    const mine = ++requestsLoadId;
+    let list = [];
+    let failed = false;
+    try { list = await VYROPayments.loadRequests(); }
+    catch (error) { failed = true; console.error("VYRO: could not load requests:", error); }
+    if (mine !== requestsLoadId) return;
+
+    inBox.innerHTML = "";
+    outBox.innerHTML = "";
+    const incoming = list.filter(function (r) { return r.direction === "incoming"; });
+    const outgoing = list.filter(function (r) { return r.direction === "outgoing"; });
+    incoming.forEach(function (r) { inBox.appendChild(requestRow(r)); });
+    outgoing.forEach(function (r) { outBox.appendChild(requestRow(r)); });
+    if (inEmpty) { inEmpty.textContent = failed ? "Could not load requests. Close this screen and open it again." : "No requests for you."; inEmpty.style.display = (failed || !incoming.length) ? "block" : "none"; }
+    if (outEmpty) outEmpty.style.display = (failed || outgoing.length) ? "none" : "block";
+}
+
+function openRequestsScreen() {
+    loadRequestsScreen();
+    showScreen(requestsScreen);
+}
+
+async function answerRequest(r, status, button) {
+    button.disabled = true;
+    try {
+        await VYROPayments.respondToRequest(r.id, status);
+    } catch (error) {
+        alert(error.userFacing ? error.message : "Could not update the request.");
+    }
+    await loadRequestsScreen();
+    refreshRequestsBadge();
+}
+
+// Paying a request is an ordinary VYRO payment (same fee, same wallet approval).
+async function payRequest(r, button) {
+    const problem = checkBuild();
+    if (problem) { alert(problem); return; }
+    if (typeof VYROWallet === "undefined" || !VYROWallet.isConnected()) {
+        alert("Connect a wallet before paying a request.");
+        return;
+    }
+    const wallet = VYROWallet.getActiveWallet();
+    if (!wallet || !wallet.address) { alert("Unable to determine the sending wallet."); return; }
+    if (wallet.network && wallet.network !== "solana") { alert("This wallet network is not supported for VYRO V1."); return; }
+
+    VYROPayments.setPendingPayment({
+        recipient: "@" + r.fromUsername,
+        amount: r.amount,
+        asset: "USDC",
+        network: "Solana",
+        fromWallet: wallet.address,
+        walletType: wallet.type || "solana",
+        walletProvider: wallet.provider || wallet.type || "External Wallet",
+        type: "Send",
+        requestId: r.id
+    });
+
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = "CHECKING…";
+    try {
+        const q = await VYROPayments.quote();
+        renderConfirmScreen(q, wallet);
+        showScreen(confirmPaymentScreen);
+    } catch (error) {
+        console.error("VYRO: request quote failed:", error);
+        alert(error.userFacing ? error.message : "Unable to prepare this payment. Please try again.");
+    } finally {
+        button.disabled = false;
+        button.textContent = label;
+    }
+}
+
+function wireRequestNav(id, handler) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("click", handler);
+}
+wireRequestNav("request-money-btn", function () { showScreen(requestMoneyScreen); });
+wireRequestNav("view-requests-btn", openRequestsScreen);
+wireRequestNav("home-requests-btn", openRequestsScreen);
+wireRequestNav("request-back-btn", function () { showScreen(receiveScreen); });
+wireRequestNav("request-home-logo-btn", function () { showScreen(homeScreen); });
+wireRequestNav("requests-back-btn", function () { showScreen(homeScreen); });
+wireRequestNav("requests-home-logo-btn", function () { showScreen(homeScreen); });
+
+const sendRequestButton = document.getElementById("send-request-btn");
+if (sendRequestButton) {
+    sendRequestButton.addEventListener("click", async function () {
+        if (sendRequestButton.disabled) return;
+        const who = document.getElementById("request-username").value;
+        const amount = document.getElementById("request-amount").value.trim();
+        const label = sendRequestButton.textContent;
+        sendRequestButton.disabled = true;
+        sendRequestButton.textContent = "SENDING…";
+        try {
+            const req = await VYROPayments.createRequest(who, amount);
+            document.getElementById("request-username").value = "";
+            document.getElementById("request-amount").value = "";
+            alert("Request sent to @" + req.toUsername + " for " + req.amount + " USDC. They will see it under Payment Requests.");
+            openRequestsScreen();
+        } catch (error) {
+            console.error("VYRO: request failed:", error);
+            alert(error.userFacing ? error.message : "Could not send the request. Please try again.");
+        } finally {
+            sendRequestButton.disabled = false;
+            sendRequestButton.textContent = label;
+        }
     });
 }
 
