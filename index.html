@@ -688,6 +688,15 @@
 
         </div>
 
+        <button
+            id="home-requests-btn"
+            class="secondary-button requests-link"
+            type="button"
+        >
+            PAYMENT REQUESTS
+            <span id="home-requests-badge" class="requests-badge" hidden>0</span>
+        </button>
+
 
         <div class="activity-section">
 
@@ -842,6 +851,8 @@
                 >
 
             </div>
+
+            <div id="recipient-suggestions" class="suggestions" role="listbox"></div>
 
 
             <div
@@ -1153,8 +1164,24 @@
         </p>
 
         <button
-            id="copy-username-btn"
+            id="request-money-btn"
             class="primary-button auth-button"
+            type="button"
+        >
+            REQUEST MONEY
+        </button>
+
+        <button
+            id="view-requests-btn"
+            class="secondary-button auth-button"
+            type="button"
+        >
+            VIEW PAYMENT REQUESTS
+        </button>
+
+        <button
+            id="copy-username-btn"
+            class="secondary-button auth-button"
             type="button"
         >
             COPY MY USERNAME
@@ -1179,6 +1206,141 @@
     </div>
 
 </section>
+
+<!-- =========================================================
+     REQUEST MONEY
+     ========================================================= -->
+
+<section id="request-money-screen" class="screen">
+
+    <div class="internal-header">
+
+        <button id="request-back-btn" class="back-button" type="button">
+            ‹
+        </button>
+
+        <button id="request-home-logo-btn" class="home-logo-button" type="button">
+            VYRO
+        </button>
+
+    </div>
+
+    <div class="send-content">
+
+        <h1>
+            Request Money
+        </h1>
+
+        <p class="auth-subtitle">
+            Ask another VYRO user to pay you. They get the request in VYRO and only
+            need to approve it in their wallet.
+        </p>
+
+        <div class="form-group">
+
+            <label for="request-username">
+                Request from
+            </label>
+
+            <div class="input-wrapper">
+
+                <span class="input-prefix">
+                    @
+                </span>
+
+                <input
+                    id="request-username"
+                    type="text"
+                    placeholder="username"
+                    autocomplete="off"
+                    autocapitalize="none"
+                    spellcheck="false"
+                >
+
+            </div>
+
+            <div id="request-suggestions" class="suggestions" role="listbox"></div>
+
+        </div>
+
+        <div class="form-group">
+
+            <label for="request-amount">
+                Amount (USDC)
+            </label>
+
+            <input
+                id="request-amount"
+                type="number"
+                inputmode="decimal"
+                placeholder="0.00"
+                min="0"
+                step="any"
+            >
+
+            <p class="min-note">
+                Minimum request: 1 USDC ($1.00). You are paid at your receiving wallet.
+            </p>
+
+        </div>
+
+        <button
+            id="send-request-btn"
+            class="primary-button auth-button"
+            type="button"
+        >
+            SEND REQUEST
+        </button>
+
+    </div>
+
+</section>
+
+
+<!-- =========================================================
+     PAYMENT REQUESTS
+     ========================================================= -->
+
+<section id="requests-screen" class="screen">
+
+    <div class="internal-header">
+
+        <button id="requests-back-btn" class="back-button" type="button">
+            ‹
+        </button>
+
+        <button id="requests-home-logo-btn" class="home-logo-button" type="button">
+            VYRO
+        </button>
+
+    </div>
+
+    <div class="send-content">
+
+        <h1>
+            Requests
+        </h1>
+
+        <p class="auth-subtitle">
+            Money other people asked you for, and requests you sent.
+        </p>
+
+        <div class="requests-section-title">
+            ASKED OF YOU
+        </div>
+        <div id="requests-incoming" class="requests-list"></div>
+        <p id="requests-incoming-empty" class="requests-empty">No requests for you.</p>
+
+        <div class="requests-section-title">
+            YOU REQUESTED
+        </div>
+        <div id="requests-outgoing" class="requests-list"></div>
+        <p id="requests-outgoing-empty" class="requests-empty">You have not requested anything yet.</p>
+
+    </div>
+
+</section>
+
 
 <!-- =========================================================
      PROFILE SCREEN
