@@ -298,10 +298,13 @@
             if (isMobile() && deepLinkBase) {
                 setStatus("Opening your wallet…");
                 window.location.href = deepLinkBase + encodeURIComponent(res.uri);
+                        } else if (window.VYROWalletConnectUI) {
+                setStatus("Approve the connection in your wallet app.");
+                window.VYROWalletConnectUI.show(res.uri, label);
             } else {
                 setStatus("Open your wallet app and approve the connection request.");
-                console.info("VYRO WalletConnect URI:", res.uri); // desktop QR display is a planned addition
-            }
+                console.info("VYRO WalletConnect URI:", res.uri);
+    }
         }
         
                 wcSession = await res.approval();
