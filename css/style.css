@@ -2340,3 +2340,214 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
     padding: 8px 12px;
     font-size: 13px;
 }
+
+/* =========================================================
+   VYRO LOGO (embedded wordmark — no separate image file needed)
+   ========================================================= */
+
+:root {
+    --vyro-wordmark: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUUAAABNCAMAAAAGjoa2AAABBmlDQ1BJQ0MgUHJvZmlsZQAAeJxjYGCSYAACJgEGhty8kqIgdyeFiMgoBQYkkJhcXMCAGzAyMHy7BiIZGC7r4lGHC3CmpBYnA+kPQFxSBLQcaGQKkC2SDmFXgNhJEHYPiF0UEuQMZC8AsjXSkdhJSOzykoISIPsESH1yQRGIfQfItsnNKU1GuJuBJzUvNBhIRwCxDEMxQxCDO4MTGX7ACxDhmb+IgcHiKwMD8wSEWNJMBobtrQwMErcQYipAP/C3MDBsO1+QWJQIFmIBYqa0NAaGT8sZGHgjGRiELzAwcEVj2oGICxx+VQD71Z0hHwjTGXIYUoEingx5DMkMekCWEYMBgyGDGQBMpUCRBqmilgAAAYBQTFRFHBcJ9OittYUv0adOKhoDrHsp8diLypY07chuMSQI+OSVspZRbVksyJpH/PjO5rhWRzQNlIZRsqZwjWovNisQ9NN4i3lKTjsTk3U00bZup5lpq4pK27NTc2Y0cmlKlmcUxIsx1siNqKSHNjUkqnkVTkUpmpRxVUUXfHNOkIhq5rtm+vKzVkwrOzQWsoIX1aI5x7qHRCsF6Nur8OrHRjwoyalnKCAINjAUu7N1u5I3bFca3dKUaUsa5suHWVEv1cN34axLXFUzmpJV2tW07cFYz8ip/fviZk0joZyGubOLuKRbSUEV4ag6jFwNo2oPMy0hXFdGOh4AR0ApZUMWZFxFkoI6mpmDQSMAg1wmnHQagnxpMzAiY1ArenQ5QTUkWUwafHdkom0kxI5BQjAHZFEZo3tAwr2iPzwcPjopRR4ATy8HYkMigGtFoY5kxp1gHyMSXz4TWlAVVlBAYTsUcU8hbGQcvbenvsKdwq+E1c3A3tfE6bI9497AAAAAAAAAAAAA8P8rdAAAAIB0Uk5TAP///wz/////L///+P///3H///9K//+M//////////////9q/63/rf/////Iaf///1L//43/HFr///L/0P/a///o///////W////mf///1LzI5q2////Nv///1rd/3XG////Xdz//4KBK2W1////H6DP2Jrj//////////8AAAA7X/HcAAAS0ElEQVR42u2c93/iOrbAwTLGxnZwATdKgAQIJRNISCjpbVKm93vn1r1t39bX+/vj35FkgyEU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");
+}
+
+/* Welcome screen: the full wordmark (with tagline) replaces the text logo. */
+#welcome-screen .logo {
+    width: min(72vw, 300px);
+    aspect-ratio: 325 / 77;
+    height: auto;
+    margin-top: 12px;
+    padding: 0;
+
+    font-size: 0;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+
+    background: var(--vyro-wordmark) center / contain no-repeat;
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+
+    filter:
+        drop-shadow(0 0 10px rgba(245, 201, 91, 0.30))
+        drop-shadow(0 0 25px rgba(245, 201, 91, 0.10));
+}
+
+/* Every other screen: one logo button, top centre, that returns to Home. */
+.global-logo-btn {
+    position: fixed;
+    top: 27px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 600;
+
+    display: none;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 120px;
+    height: 44px;
+    padding: 0;
+
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.global-logo-btn.visible {
+    display: flex;
+}
+
+.global-logo-btn .logo-crop {
+    display: block;
+    width: 112px;
+    height: 19px;               /* shows the V and VYRO, crops the tagline */
+    background: var(--vyro-wordmark) top center / 112px auto no-repeat;
+    filter:
+        drop-shadow(0 0 7px rgba(245, 201, 91, 0.35))
+        drop-shadow(0 0 18px rgba(245, 201, 91, 0.10));
+}
+
+.global-logo-btn:active .logo-crop {
+    transform: scale(0.95);
+}
+
+/* The old text logos are replaced by the one above. */
+.auth-logo,
+.home-logo-button,
+.home-brand {
+    display: none !important;
+}
+
+/* =========================================================
+   LIVE FIELD STATUS (username taken / available) — inline, not a pop-up
+   ========================================================= */
+
+.field-status {
+    min-height: 18px;
+    margin: 6px 2px 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.field-status.bad {
+    color: #ff5a5f;
+}
+
+.field-status.good {
+    color: #5fd08a;
+}
+
+.field-status.pending {
+    color: var(--text-muted);
+}
+
+input.input-bad {
+    border-color: #ff5a5f !important;
+}
+
+/* =========================================================
+   SIGN IN WITH GOOGLE
+   ========================================================= */
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 18px 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
+.google-btn {
+    margin-top: 10px;
+}
+
+/* =========================================================
+   WALLETCONNECT PANEL
+   ========================================================= */
+
+.wc-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.78);
+}
+
+.wc-card {
+    width: 100%;
+    max-width: 360px;
+    padding: 22px 20px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+    text-align: center;
+}
+
+.wc-card h2 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    color: var(--text);
+}
+
+.wc-card p {
+    margin: 0 0 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.wc-card .primary-button,
+.wc-card .secondary-button {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.wc-uri {
+    margin: 0 0 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(245, 201, 91, 0.04);
+    color: var(--text-muted);
+    font-size: 11px;
+    word-break: break-all;
+    max-height: 64px;
+    overflow: hidden;
+}
+
+/* =========================================================
+   THEME POLISH — request screen and username suggestions
+   ========================================================= */
+
+.suggestion,
+.request-btn {
+    font-family: inherit;
+}
+
+.suggestions {
+    border-color: var(--gold);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.suggestion {
+    letter-spacing: 0.02em;
+}
+
+.suggestion:hover,
+.suggestion:focus-visible {
+    background: rgba(245, 201, 91, 0.10);
+    outline: none;
+}
