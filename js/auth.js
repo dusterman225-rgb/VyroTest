@@ -35,6 +35,7 @@
             }
         } catch (error) {
             console.error("VYRO profile read error:", error);
+            return null;   // could not read it: different from "no profile yet"
         }
         return {};
     }
@@ -71,6 +72,15 @@
         try { await current.getIdToken(true); } catch (e) { console.warn("VYRO token refresh failed:", e); }
 
         const data = await loadProfile(current.uid);
+        if (data === null) {
+            alert("Could not load your profile. Check your connection and try again.");
+            return;
+        }
+        // Signed in with Google (or a half-finished account): pick a username first.
+        if (!data.username) {
+            go("profile-setup-screen");
+            return;
+        }
         // Keep the public directory copy of the verification word current (senders see it when they
         // look this user up). Covers accounts made before the directory held the word.
         if (data.username && data.verificationWord) {
@@ -95,42 +105,94 @@
         else go("home-screen");
     }
 
+    // ---------- username claim (shared by email sign-up and Google sign-up) ----------
+    // Creates the username, its search entry and the private profile in one atomic write. The security
+    // rules only allow `create` on a username that does not exist yet, so two people can never share one.
+    async function claimProfile(user, username, email, verificationWord) {
+        const now = firebase.firestore.FieldValue.serverTimestamp();
+        const batch = firebaseDB.batch();
+        batch.set(firebaseDB.collection("usernames").doc(username), { uid: user.uid, verificationWord, createdAt: now });
+        // Name-only entry that powers the live "type part of a username" search.
+        batch.set(firebaseDB.collection("usernameIndex").doc(username), { username });
+        batch.set(firebaseDB.collection("users").doc(user.uid), {
+            username, email, verificationWord, twoFactorEnabled:false, securitySetupComplete:false, createdAt: now
+        });
+        try { await batch.commit(); }
+        catch (e) {
+            console.error("VYRO USERNAME CLAIM ERROR:", e);
+            throw (e && e.code === "permission-denied") ? { code: "username-taken" } : e;
+        }
+    }
+
+    // ---------- live username check (inline, red when taken) ----------
+    function setStatus(statusEl, input, message, kind) {
+        if (statusEl) { statusEl.textContent = message || ""; statusEl.className = "field-status" + (kind ? " " + kind : ""); }
+        if (input) input.classList.toggle("input-bad", kind === "bad");
+    }
+
+    async function isUsernameTaken(name) {
+        const snap = await firebaseDB.collection("usernameIndex").doc(name).get();
+        return snap.exists;
+    }
+
+    function watchUsername(input, statusEl) {
+        if (!input || !statusEl) return;
+        let timer = null;
+        let seq = 0;
+        input.addEventListener("input", function () {
+            clearTimeout(timer);
+            const name = cleanUsername(input.value);
+            seq++;
+            if (!name) { setStatus(statusEl, input, ""); return; }
+            if (!/^[a-z0-9_]*$/.test(name)) { setStatus(statusEl, input, "Use only letters, numbers and underscores.", "bad"); return; }
+            if (name.length < 3) { setStatus(statusEl, input, ""); return; }
+            if (name.length > 20) { setStatus(statusEl, input, "Usernames are at most 20 characters.", "bad"); return; }
+            setStatus(statusEl, input, "Checking…", "pending");
+            const mine = seq;
+            timer = setTimeout(async function () {
+                try {
+                    const taken = await isUsernameTaken(name);
+                    if (mine !== seq) return;
+                    if (taken) setStatus(statusEl, input, "@" + name + " is already taken. Please choose another.", "bad");
+                    else setStatus(statusEl, input, "@" + name + " is available.", "good");
+                } catch (e) {
+                    if (mine === seq) setStatus(statusEl, input, "");   // could not check: the sign-up itself still enforces it
+                }
+            }, 350);
+        });
+    }
+
     let registering = false;   // stops the rollback sign-out from yanking the user off the form
 
     async function createAccount() {
-        const usernameRaw = screen("username")?.value || "";
-        const username = cleanUsername(usernameRaw);
+        const usernameInput = screen("username");
+        const statusEl = screen("username-status");
+        const username = cleanUsername(usernameInput?.value || "");
         const email = (screen("email")?.value || "").trim().toLowerCase();
         const password = screen("password")?.value || "";
         const verificationWord = (screen("verification-word")?.value || "").trim().toUpperCase();
 
         if (!username || !email || !password || !verificationWord) { alert("Please complete all fields."); return; }
-        if (!/^[a-z0-9_]{3,20}$/.test(username)) { alert("Username must be 3–20 characters and use only letters, numbers, or underscores."); return; }
+        if (!/^[a-z0-9_]{3,20}$/.test(username)) { setStatus(statusEl, usernameInput, "Username must be 3–20 characters: letters, numbers or underscores.", "bad"); return; }
         if (password.length < 8) { alert("Password must be at least 8 characters."); return; }
 
         const button = screen("continue-registration-btn");
         if (button) { button.disabled = true; button.textContent = "CREATING..."; }
         registering = true;
         try {
+            // Check first, so the person is told before anything is created.
+            let taken = false;
+            try { taken = await isUsernameTaken(username); } catch (e) { /* the claim below still enforces it */ }
+            if (taken) { setStatus(statusEl, usernameInput, "@" + username + " is already taken. Please choose another.", "bad"); return; }
+
             const credential = await firebaseAuth.createUserWithEmailAndPassword(email, password);
             const user = credential.user;
-            // Claim the username and create the private profile atomically. The security rules only
-            // allow `create` on a username that does not exist yet, so two people can never share one.
             try {
-                const now = firebase.firestore.FieldValue.serverTimestamp();
-                const batch = firebaseDB.batch();
-                batch.set(firebaseDB.collection("usernames").doc(username), { uid: user.uid, verificationWord, createdAt: now });
-                // Name-only entry that powers the live "type part of a username" search.
-                batch.set(firebaseDB.collection("usernameIndex").doc(username), { username });
-                batch.set(firebaseDB.collection("users").doc(user.uid), {
-                    username, email, verificationWord, twoFactorEnabled:false, securitySetupComplete:false, createdAt: now
-                });
-                await batch.commit();
+                await claimProfile(user, username, email, verificationWord);
             } catch (claimError) {
-                console.error("VYRO USERNAME CLAIM ERROR:", claimError);
                 // Roll back the half-created account so the email can be used again.
                 try { await user.delete(); } catch (e) { console.warn("VYRO rollback failed:", e); }
-                throw (claimError && claimError.code === "permission-denied") ? { code: "username-taken" } : claimError;
+                throw claimError;
             }
             await user.sendEmailVerification();
             localStorage.setItem("vyro_pending_username", username);
@@ -139,10 +201,62 @@
             go("email-verification-screen");
         } catch (error) {
             console.error("VYRO REGISTRATION ERROR:", error);
-            alert("Registration error: " + friendlyAuthError(error));
+            if (error && error.code === "username-taken") {
+                setStatus(statusEl, usernameInput, "@" + username + " is already taken. Please choose another.", "bad");
+            } else {
+                alert("Registration error: " + friendlyAuthError(error));
+            }
         } finally {
             if (button) { button.disabled = false; button.textContent = "CONTINUE"; }
             setTimeout(function () { registering = false; }, 1000);
+        }
+    }
+
+    // ---------- Google sign-in ----------
+    async function signInWithGoogle(button) {
+        const label = button ? button.textContent : "";
+        if (button) { button.disabled = true; button.textContent = "OPENING GOOGLE..."; }
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: "select_account" });
+            const credential = await firebaseAuth.signInWithPopup(provider);
+            await routeAuthenticatedUser(credential.user);   // existing member: Home; new: choose a username
+        } catch (error) {
+            const code = error && error.code || "";
+            if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+            console.error("VYRO GOOGLE SIGN-IN ERROR:", error);
+            if (code === "auth/popup-blocked") alert("Your browser blocked the Google window. Allow pop-ups for this site and try again.");
+            else if (code === "auth/unauthorized-domain") alert("Google sign-in is not enabled for this website address yet. Add it under Firebase → Authentication → Settings → Authorized domains.");
+            else if (code === "auth/operation-not-allowed") alert("Google sign-in is not turned on yet. Enable it under Firebase → Authentication → Sign-in method.");
+            else if (code === "auth/account-exists-with-different-credential") alert("An account with this email already exists. Log in with your email and password.");
+            else alert("Google sign-in failed: " + friendlyAuthError(error));
+        } finally {
+            if (button) { button.disabled = false; button.textContent = label; }
+        }
+    }
+
+    // Finishes a Google sign-up: the person picks a username and verification word.
+    async function completeProfileSetup() {
+        const user = firebaseAuth.currentUser;
+        const input = screen("setup-username");
+        const statusEl = screen("setup-username-status");
+        if (!user) { alert("Please sign in again."); go("welcome-screen"); return; }
+        const username = cleanUsername(input?.value || "");
+        const verificationWord = (screen("setup-verification-word")?.value || "").trim().toUpperCase();
+        if (!username || !verificationWord) { alert("Please complete all fields."); return; }
+        if (!/^[a-z0-9_]{3,20}$/.test(username)) { setStatus(statusEl, input, "Username must be 3–20 characters: letters, numbers or underscores.", "bad"); return; }
+
+        const button = screen("setup-continue-btn");
+        if (button) { button.disabled = true; button.textContent = "SAVING..."; }
+        try {
+            await claimProfile(user, username, (user.email || "").toLowerCase(), verificationWord);
+            saveProfileLocally({username});
+            await routeAuthenticatedUser(user);
+        } catch (error) {
+            if (error && error.code === "username-taken") setStatus(statusEl, input, "@" + username + " is already taken. Please choose another.", "bad");
+            else { console.error("VYRO SETUP ERROR:", error); alert("Could not finish setting up your account: " + friendlyAuthError(error)); }
+        } finally {
+            if (button) { button.disabled = false; button.textContent = "CONTINUE"; }
         }
     }
 
@@ -191,6 +305,12 @@
         bind("login-submit-btn",login);
         bind("forgot-password-btn",forgotPassword);
         bind("logout-btn",logout);
+        bind("google-login-btn", function () { signInWithGoogle(screen("google-login-btn")); });
+        bind("google-signup-btn", function () { signInWithGoogle(screen("google-signup-btn")); });
+        bind("setup-continue-btn", completeProfileSetup);
+        bind("setup-cancel-btn", logout);
+        watchUsername(screen("username"), screen("username-status"));
+        watchUsername(screen("setup-username"), screen("setup-username-status"));
 
         const verify = screen("verify-email-btn");
         if (verify) verify.addEventListener("click",async function(){
@@ -225,7 +345,7 @@
         });
     }
 
-    window.VYROAuth = {createAccount,login,logout,forgotPassword,routeAuthenticatedUser,loadProfile};
+    window.VYROAuth = {createAccount,signInWithGoogle,completeProfileSetup,login,logout,forgotPassword,routeAuthenticatedUser,loadProfile};
 
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded",init);
     else init();
