@@ -38,6 +38,11 @@
 
 <main id="app">
 
+<!-- VYRO logo: one button, top centre, returns to Home. -->
+<button id="global-logo-btn" class="global-logo-btn" type="button" aria-label="VYRO home">
+    <span class="logo-crop" aria-hidden="true"></span>
+</button>
+
 <!-- Profile avatar: one button, pinned top-right, shown on every screen after login. -->
 <div id="global-profile-menu" class="global-profile-menu">
     <div class="profile-menu">
@@ -213,6 +218,8 @@
                 spellcheck="false"
             >
 
+            <p id="username-status" class="field-status" aria-live="polite"></p>
+
         </div>
 
 
@@ -272,6 +279,16 @@
             type="button"
         >
             CONTINUE
+        </button>
+
+        <div class="auth-divider">OR</div>
+
+        <button
+            id="google-signup-btn"
+            class="secondary-button auth-button google-btn"
+            type="button"
+        >
+            CONTINUE WITH GOOGLE
         </button>
 
     </div>
@@ -362,6 +379,16 @@
             type="button"
         >
             LOG IN
+        </button>
+
+        <div class="auth-divider">OR</div>
+
+        <button
+            id="google-login-btn"
+            class="secondary-button auth-button google-btn"
+            type="button"
+        >
+            CONTINUE WITH GOOGLE
         </button>
 
 
@@ -1206,6 +1233,81 @@
     </div>
 
 </section>
+
+<!-- =========================================================
+     FINISH SETUP (Google sign-in: choose a username and verification word)
+     ========================================================= -->
+
+<section id="profile-setup-screen" class="screen">
+
+    <div class="auth-header"></div>
+
+    <div class="auth-content">
+
+        <h1>
+            Almost there
+        </h1>
+
+        <p class="auth-subtitle">
+            Choose your VYRO username and verification word to finish creating your account.
+        </p>
+
+        <div class="form-group">
+
+            <label for="setup-username">
+                VYRO USERNAME
+            </label>
+
+            <input
+                id="setup-username"
+                type="text"
+                placeholder="@username"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+            >
+
+            <p id="setup-username-status" class="field-status" aria-live="polite"></p>
+
+        </div>
+
+        <div class="form-group">
+
+            <label for="setup-verification-word">
+                VERIFICATION WORD
+            </label>
+
+            <input
+                id="setup-verification-word"
+                type="text"
+                placeholder="Choose a verification word"
+                autocomplete="off"
+                autocapitalize="none"
+                spellcheck="false"
+            >
+
+        </div>
+
+        <button
+            id="setup-continue-btn"
+            class="primary-button auth-button"
+            type="button"
+        >
+            CONTINUE
+        </button>
+
+        <button
+            id="setup-cancel-btn"
+            class="text-button"
+            type="button"
+        >
+            Use a different account
+        </button>
+
+    </div>
+
+</section>
+
 
 <!-- =========================================================
      REQUEST MONEY
@@ -2320,6 +2422,7 @@
 
 <script src="js/transfer.js"></script>
 
+<script src="js/wc-ui.js"></script>
 <script src="js/wallet.js"></script>
 
 <script src="js/payments.js"></script>
