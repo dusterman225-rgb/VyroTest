@@ -127,6 +127,10 @@ const walletsScreen =
 // VYRO — SHOW SCREEN
 // =========================================================
 
+// Screens shown before the user is fully signed in (no profile avatar there).
+const VYRO_AUTH_SCREENS = ["welcome-screen", "create-account-screen", "login-screen",
+    "email-verification-screen", "two-factor-screen", "two-factor-code-screen", "profile-setup-screen"];
+
 function showScreen(screen, options) {
     if (!screen) {
         console.error("VYRO: Screen not found.");
@@ -153,10 +157,15 @@ function showScreen(screen, options) {
     // The profile avatar (top-right) shows on every screen once the user is signed in.
     const avatar = document.getElementById("global-profile-menu");
     if (avatar) {
-        const authScreens = ["welcome-screen", "create-account-screen", "login-screen",
-            "email-verification-screen", "two-factor-screen", "two-factor-code-screen"];
-        avatar.classList.toggle("visible", authScreens.indexOf(screen.id) === -1);
+        avatar.classList.toggle("visible", VYRO_AUTH_SCREENS.indexOf(screen.id) === -1);
     }
+
+    // The VYRO logo (top centre) is on every screen except the Welcome screen, which has the big one.
+    const logoButton = document.getElementById("global-logo-btn");
+    if (logoButton) logoButton.classList.toggle("visible", screen.id !== "welcome-screen");
+
+    // Any wallet-connection panel belongs to the screen it was opened from.
+    if (window.VYROWalletConnectUI) window.VYROWalletConnectUI.hide();
 
     if (screen.id === "home-screen" && typeof window.refreshHomeBalance === "function") {
         window.refreshHomeBalance();
@@ -1301,6 +1310,20 @@ if (sendRequestButton) {
 }
 
 // =========================================================
+// VYRO — LOGO BUTTON (top centre): back to Home once signed in, otherwise to Welcome
+// =========================================================
+
+const globalLogoButton = document.getElementById("global-logo-btn");
+if (globalLogoButton) {
+    globalLogoButton.addEventListener("click", function () {
+        const active = document.querySelector(".screen.active");
+        const signedIn = !!(firebaseAuth.currentUser && firebaseAuth.currentUser.emailVerified);
+        const inApp = active && VYRO_AUTH_SCREENS.indexOf(active.id) === -1;
+        showScreen(signedIn && inApp ? homeScreen : welcomeScreen);
+    });
+}
+
+// =========================================================
 // HOME → RECEIVE
 // =========================================================
 
@@ -1517,6 +1540,8 @@ if (resendTwoFactorCodeButton) {
 // =========================================================
 
 window.alert = function (message) {
+
+    if (window.VYROWalletConnectUI) window.VYROWalletConnectUI.hide();
 
     const existingModal =
         document.querySelector(
